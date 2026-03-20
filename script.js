@@ -150,7 +150,13 @@ async function startDownload(btn, format) {
 }
 
 async function fetchAndSave(url, filename, btn) {
-  const proxyUrl = `${PROXY}/proxy?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+  // Se android/ios: URL sem &ip= — browser baixa direto do YouTube (rápido)
+  // Se mweb: URL com &ip= do servidor — precisa do Worker (mais lento)
+  const needsProxy = window._urlsNeedProxy !== false;
+  const proxyUrl = needsProxy
+    ? `${PROXY}/proxy?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`
+    : url;
+  console.log(`[download] needsProxy=${needsProxy} — ${needsProxy ? "via Worker" : "direto do YouTube"}`);
 
   // Chrome/Edge: File System Access API — escreve direto no disco, chunk por chunk
   // Sem acumular tudo na RAM. Muito mais rápido para arquivos grandes.
@@ -225,7 +231,10 @@ async function fetchDashAndSave(videoUrl, audioUrl, filename, btn) {
   }
 
   async function fetchWithProgress(url, onProgress) {
-    const proxyUrl = `${PROXY}/proxy?url=${encodeURIComponent(url)}`;
+    const needsProxy = window._urlsNeedProxy !== false;
+    const proxyUrl = needsProxy
+      ? `${PROXY}/proxy?url=${encodeURIComponent(url)}`
+      : url;
     const res = await fetch(proxyUrl);
     if (!res.ok) throw new Error(`HTTP ${res.status} ao baixar stream`);
     const contentLength = parseInt(res.headers.get("Content-Length") || "0");
@@ -334,6 +343,9 @@ async function analyze() {
 
     currentClient = data.client_used || null;
     currentTitle = data.title || null;
+    // Se false: android/ios — URLs sem &ip=, browser baixa direto do YouTube
+    // Se true:  mweb — URLs com &ip=, precisa do Worker como proxy
+    window._urlsNeedProxy = data.urls_need_proxy !== false;
     renderResult(data);
 
   } catch (err) {
