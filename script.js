@@ -151,24 +151,56 @@ async function startDownload(btn, format) {
 
 async function fetchAndSave(url, filename, btn) {
   const proxyUrl = `${PROXY}/proxy?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+
+  // Chrome/Edge: File System Access API — escreve direto no disco, chunk por chunk
+  // Sem acumular tudo na RAM. Muito mais rápido para arquivos grandes.
+  if (window.showSaveFilePicker) {
+    let writable;
+    try {
+      const ext = filename.split(".").pop() || "mp4";
+      const mimeMap = { mp4: "video/mp4", webm: "video/webm", mp3: "audio/mpeg", m4a: "audio/mp4" };
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: "Mídia", accept: { [mimeMap[ext] || "video/mp4"]: ["." + ext] } }],
+      });
+      writable = await handle.createWritable();
+      const res = await fetch(proxyUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const total = parseInt(res.headers.get("Content-Length") || "0");
+      const reader = res.body.getReader();
+      let loaded = 0, fakePct = 5;
+      let fakeTimer = !total ? setInterval(() => {
+        fakePct = fakePct < 60 ? fakePct + 4 : fakePct + (88 - fakePct) * 0.05;
+        renderBtnPhase(btn, "downloading", Math.min(fakePct, 88));
+      }, 200) : null;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        await writable.write(value);
+        loaded += value.length;
+        if (total > 0) renderBtnPhase(btn, "downloading", (loaded / total) * 100);
+      }
+      if (fakeTimer) clearInterval(fakeTimer);
+      await writable.close();
+      return;
+    } catch (err) {
+      if (err.name === "AbortError") throw new Error("Download cancelado");
+      try { await writable?.close(); } catch (_) {}
+      console.warn("File System API falhou, usando fallback em memória:", err);
+    }
+  }
+
+  // Fallback: acumula em memória (Firefox, Safari, browsers sem File System API)
   const res = await fetch(proxyUrl);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
   const total = parseInt(res.headers.get("Content-Length") || "0");
   const reader = res.body.getReader();
   const chunks = [];
-  let loaded = 0;
-
-  // Animação indeterminada se não há Content-Length
-  let fakeTimer = null;
-  let fakePct = 5;
-  if (!total) {
-    fakeTimer = setInterval(() => {
-      fakePct = fakePct < 60 ? fakePct + 4 : fakePct + (88 - fakePct) * 0.05;
-      renderBtnPhase(btn, "downloading", Math.min(fakePct, 88));
-    }, 200);
-  }
-
+  let loaded = 0, fakePct = 5;
+  let fakeTimer = !total ? setInterval(() => {
+    fakePct = fakePct < 60 ? fakePct + 4 : fakePct + (88 - fakePct) * 0.05;
+    renderBtnPhase(btn, "downloading", Math.min(fakePct, 88));
+  }, 200) : null;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -176,11 +208,8 @@ async function fetchAndSave(url, filename, btn) {
     loaded += value.length;
     if (total > 0) renderBtnPhase(btn, "downloading", (loaded / total) * 100);
   }
-
   if (fakeTimer) clearInterval(fakeTimer);
-
-  const blob = new Blob(chunks);
-  triggerDownload(blob, filename);
+  triggerDownload(new Blob(chunks), filename);
 }
 
 async function fetchDashAndSave(videoUrl, audioUrl, filename, btn) {
