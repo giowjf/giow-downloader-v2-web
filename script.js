@@ -1,6 +1,9 @@
 // ⚠️ Aponte para o novo serviço no Render
 const API = "https://giow-downloader-v2.onrender.com";
 
+// Cloudflare Worker — proxy para contornar CORS do YouTube
+const PROXY = "https://giow-proxy.gjfranchi.workers.dev";
+
 let currentUrl = null;
 let currentClient = null;
 let currentTitle = null;
@@ -147,7 +150,8 @@ async function startDownload(btn, format) {
 }
 
 async function fetchAndSave(url, filename, btn) {
-  const res = await fetch(url);
+  const proxyUrl = `${PROXY}/proxy?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+  const res = await fetch(proxyUrl);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
   const total = parseInt(res.headers.get("Content-Length") || "0");
@@ -192,7 +196,8 @@ async function fetchDashAndSave(videoUrl, audioUrl, filename, btn) {
   }
 
   async function fetchWithProgress(url, onProgress) {
-    const res = await fetch(url);
+    const proxyUrl = `${PROXY}/proxy?url=${encodeURIComponent(url)}`;
+    const res = await fetch(proxyUrl);
     if (!res.ok) throw new Error(`HTTP ${res.status} ao baixar stream`);
     const contentLength = parseInt(res.headers.get("Content-Length") || "0");
     onProgress(0, contentLength);
