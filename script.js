@@ -1,8 +1,8 @@
 // ⚠️ Aponte para o novo serviço no Render
 const API = "https://giow-downloader-v2.onrender.com";
 
-// Cloudflare Worker — proxy para contornar CORS do YouTube
-const PROXY = "https://giow-proxy.gjfranchi.workers.dev";
+// Proxy de download — usa a própria API no Render (sem throttling do Cloudflare)
+const PROXY = "https://giow-downloader-v2.onrender.com";
 
 let currentUrl = null;
 let currentClient = null;
